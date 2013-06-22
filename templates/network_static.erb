@@ -1,0 +1,14 @@
+<% 
+  def mask_2_ciddr mask
+   "/" + mask.split(".").map { |e| e.to_i.to_s(2).rjust(8, "0") }.join.count("1").to_s
+  end
+  ciddr = mask_2_ciddr network[:netmask]
+%>
+
+[Match]
+Name=<%= network[:device] %>
+
+[Network]
+
+[Address]
+Address=<%= "#{network[:ip]}#{ciddr}" %>
