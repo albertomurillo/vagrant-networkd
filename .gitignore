@@ -1,3 +1,4 @@
 *.gem
 .vagrant*
 Gemfile.lock
+.DS_Store

@@ -1,0 +1,8 @@
+<% 
+  ciddr = mask_2_ciddr network[:netmask]
+%>
+[Match]
+Name=<%= network[:device] %>
+
+[Network]
+Address=<%= "#{network[:ip]}#{ciddr}" %>
