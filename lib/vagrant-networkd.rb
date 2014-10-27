@@ -1,12 +1,11 @@
-require "vagrant"
+require "tempfile"
 
 module VagrantPlugins
   module GuestNetworkd
-
     class Guest < Vagrant.plugin("2", :guest)
       def detect?(machine)
-        machine.communicate.test("systemctl") and
-        machine.communicate.test("/etc/systemd/network")
+        machine.communicate.test("test -x /usr/bin/systemctl") and
+        machine.communicate.test("test -d /etc/systemd/network")
       end
     end
 
@@ -27,21 +26,32 @@ module VagrantPlugins
       end
 
       class ConfigureNetworks
+        def self.mask_2_ciddr mask
+          "/" + mask.split(".").map { |e| e.to_i.to_s(2).rjust(8, "0") }.join.count("1").to_s
+        end
+
         def self.configure_networks(machine, networks)
-          networks.each do |network|
           interfaces = Array.new
           cmd = 'ip addr | awk \'/: ./ && !/lo/ { sub(/:/, "", $2); print $2 }\''
           machine.communicate.sudo(cmd) do |_, result|
             interfaces = result.split("\n")
           end
           machine.communicate.sudo("rm -rf /etc/systemd/network/vagrant_*")
+          # Replace en* (if any) with the first device (usually vbox nat)
+          machine.communicate.sudo("sed -i 's/Name=en\\*$/Name=#{interfaces[0]}/g' /etc/systemd/network/*")
           networks.each do |network|
             network[:device] = interfaces[network[:interface]]
+            configFile = "/etc/systemd/network/vagrant_#{network[:device]}.network"
             templateFile = File.expand_path("../../templates/network_#{network[:type]}.erb", __FILE__)
             template = File.read(templateFile)
-            configFile = "/etc/systemd/network/vagrant_#{network[:device]}.network"            
-            config = ERB.new(template).result            
-            machine.communicate.sudo("echo -e #{config} > #{filename}")
+            temp = Tempfile.new("vagrant")
+            temp.binmode
+            temp.write(Erubis::Eruby.new(template, :trim => true).result(binding))
+            temp.close
+            machine.communicate.upload(temp.path, "/tmp/vagrant_network")
+            machine.communicate.sudo("mv /tmp/vagrant_network #{configFile}")
+            machine.communicate.sudo("chown root:root #{configFile}")
+            machine.communicate.sudo("chmod 644 #{configFile}")
           end
           machine.communicate.sudo("systemctl restart systemd-networkd.service")
         end
